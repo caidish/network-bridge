@@ -20,6 +20,17 @@ services:
       - --state=/var/lib/tailscale/tailscaled.state
       - --statedir=/var/lib/tailscale
       - --tun=tailscale0
+    # Docker Desktop injects the macOS system proxy (set by Clash Verge) into
+    # containers. tailscaled would then route control-plane and DERP relay
+    # connections through the Clash exit, which can't reach a nearby/custom
+    # DERP — leaving clients with a dead tunnel ("can't reach the configured
+    # DNS servers" on the phone). Pin the proxy env empty: only client
+    # payload goes through Clash, never the tunnel infrastructure itself.
+    environment:
+      HTTP_PROXY: ""
+      HTTPS_PROXY: ""
+      http_proxy: ""
+      https_proxy: ""
     devices:
       - /dev/net/tun:/dev/net/tun
     cap_add:

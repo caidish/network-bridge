@@ -157,6 +157,7 @@ either way.
 | Everything fails, relay unhealthy | Clash Verge not running / mixed-port changed — fix and the gateway recovers on its own |
 | Domains hit wrong Clash rules | Client cached real IPs from before enabling the exit node — toggle Wi-Fi/airplane mode to flush DNS |
 | Relay logs `tailscale0 disappeared` | Normal after tailscale container restart; it rejoins automatically |
+| Node warns `could not connect to relay server`, phone says it can't reach DNS servers | Docker Desktop injects the macOS system proxy (set by Clash) into containers, sending tailscaled's DERP/control traffic through the proxy exit. The compose file pins `HTTP(S)_PROXY` empty for the tailscale service — make sure that block is present |
 
 ## Rollback
 
