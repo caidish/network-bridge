@@ -21,6 +21,17 @@ iPhone ──tailscale──▶ [tailscale container: kernel TUN]
                       Clash rules / selected node ──▶ Internet
 ```
 
+## Quick start
+
+```sh
+./setup.sh
+```
+
+One idempotent command: checks prerequisites, builds and starts the stack,
+walks you through the one-time Tailscale login, then verifies the whole
+TCP + UDP data path. Re-run it any time to update or re-verify. The
+sections below cover the same steps manually, plus operations details.
+
 ## Prerequisites
 
 - Docker Desktop (Apple Silicon), running and set to start at login.
@@ -34,7 +45,7 @@ Defaults work for the standard setup. To override, copy `.env.example` to
 `.env` and edit (`CLASH_SOCKS_HOST/PORT`, `TPROXY_PORT`, `BLOCK_QUIC`).
 No secrets are stored in this repo, the compose file, or the image.
 
-## First deployment
+## First deployment (manual — `./setup.sh` does all of this)
 
 ```sh
 docker compose up -d --build

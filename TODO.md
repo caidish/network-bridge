@@ -6,6 +6,7 @@ Implementation tracker for
 ## Phase 1 — 最小 TCP 链路
 
 - [x] 独立部署目录、Compose、持久化 volume（`tailscale-state`、`singbox-cache`）
+- [x] 一键部署入口 `./setup.sh`（幂等：前置检查 → 启动 → 登录 → 健康与数据路径验证）
 - [x] Tailscale Exit Node 容器（kernel TUN、`--advertise-exit-node`、无 auth key）
 - [x] nftables TCP TPROXY + 策略路由（fwmark 0x1 → table 100）
 - [x] sing-box TPROXY 入站 → SOCKS5 出站
@@ -40,6 +41,6 @@ Implementation tracker for
 
 ## 首次上线待办（用户操作）
 
-1. `docker compose exec tailscale tailscale up --hostname=clash-gw --advertise-exit-node --accept-dns=false` → 打开打印的 URL 登录
+1. `./setup.sh` → 按提示打开 URL 完成一次性登录（脚本随后自动验证健康与数据路径）
 2. Tailscale 管理台：批准 `clash-gw` 为 Exit Node，关闭 key expiry
-3. iPhone 选择 `clash-gw`，跑 README「Verify」一节
+3. iPhone 选择 `clash-gw`；再跑一次 `./setup.sh` 或 `sh scripts/diagnose.sh` 复核
