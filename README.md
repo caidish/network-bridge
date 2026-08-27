@@ -61,18 +61,20 @@ Then in the [Tailscale admin console](https://login.tailscale.com/admin/machines
 
 1. The node `clash-gw` appears — approve **Use as exit node** (and disable
    key expiry for unattended operation).
-2. **DNS settings → Global nameservers**: add a plain-DNS resolver (e.g.
-   `114.114.114.114`) and enable **Override DNS servers**. This is required:
-   without it, clients on the exit node send DNS to the gateway's tailscaled
-   over the Tailscale peer API, which resolves through the host Mac — where
-   Clash's own FakeIP DNS answers poison the path (the relay then logs
-   `missing fakeip record` and the phone reports `dns-forward-failing`).
-   With a global resolver set, clients send ordinary port-53 queries through
-   the tunnel and the gateway answers them itself — the resolver IP is never
-   actually consulted while on the exit node, so pick one that also works
-   for your devices when they are off the exit node. Prefer resolvers
-   outside Tailscale's known-DoH list (e.g. not 1.1.1.1/8.8.8.8), which
-   would otherwise be silently upgraded to DoH and bypass FakeIP.
+2. Optional hardening — **DNS settings → Global nameservers**: with no
+   tailnet resolver configured, exit-node clients send DNS to the gateway's
+   tailscaled over the Tailscale peer API, which resolves via the host Mac
+   where Clash's FakeIP DNS answers it. That path works (mihomo maps its
+   own fake IPs back to domains when the connections come back through the
+   SOCKS upstream), but it depends on Clash TUN/FakeIP being active on the
+   host and can surface `dns-forward-failing` if that chain is flaky. To
+   move client DNS fully onto the gateway's own hijack instead, add a
+   plain-DNS global nameserver (e.g. `114.114.114.114`) and enable
+   **Override DNS servers** — the resolver IP is never actually consulted
+   while on the exit node, so pick one that also works for your devices
+   when off it, and avoid Tailscale's known-DoH resolvers
+   (1.1.1.1/8.8.8.8), which get silently upgraded to DoH and bypass the
+   hijack.
 3. Optionally restrict who may use it, e.g. in the ACL policy:
 
    ```jsonc
@@ -172,7 +174,7 @@ either way.
 | Domains hit wrong Clash rules | Client cached real IPs from before enabling the exit node — toggle Wi-Fi/airplane mode to flush DNS |
 | Relay logs `tailscale0 disappeared` | Normal after tailscale container restart; it rejoins automatically |
 | Node warns `could not connect to relay server`, phone says it can't reach DNS servers | Docker Desktop injects the macOS system proxy (set by Clash) into containers, sending tailscaled's DERP/control traffic through the proxy exit. The compose file pins `HTTP(S)_PROXY` empty for the tailscale service — make sure that block is present |
-| Relay logs `missing fakeip record`, phone shows `dns-forward-failing` | Client DNS is arriving via the MagicDNS peer-API side path and being answered by Clash's FakeIP engine on the host instead of the gateway. Set the tailnet **global nameserver + Override DNS servers** (see First deployment); stale fake answers expire within seconds |
+| Relay logs `missing fakeip record`, phone shows `dns-forward-failing` | The relay is seeing FakeIPs it didn't issue with reverse-mapping failing — normally impossible with the disjoint ranges (gateway `198.19.0.0/16` vs mihomo `198.18.0.0/16`); check that the ranges haven't been changed to overlap, and consider the tailnet **global nameserver + Override DNS servers** hardening (see First deployment) |
 
 ## Rollback
 

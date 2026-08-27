@@ -11,7 +11,7 @@ Implementation tracker for
 - [x] nftables TCP TPROXY + 策略路由（fwmark 0x1 → table 100）
 - [x] sing-box TPROXY 入站 → SOCKS5 出站
 - [x] 容器内经 Clash 的出口 IP 与宿主基准一致（实测相同出口 IP）
-- [ ] iPhone 实机验证 + Clash Connections 观察（需先完成一次性 Tailscale 登录与管理台批准）
+- [x] iPhone 实机验证：登录、Exit Node 批准与选择、流量经 TPROXY → sing-box → Clash 全链路打通（1252+ 包，连接 8–39 ms 建立）
 
 ## Phase 2 — UDP 与 DNS
 
@@ -21,8 +21,9 @@ Implementation tracker for
 - [x] UDP TPROXY、DNS 劫持（含 MagicDNS 100.100.100.100）、FakeIP、`*.ts.net` 分流
 - [x] DNS 无泄漏路径：上游解析走 TCP 经 Clash，不依赖 UDP，也不触碰本地 ISP DNS
 - [x] UDP 降级开关 `BLOCK_QUIC`（默认关闭；实测无需启用）
-- [x] FakeIP 网段改为 `198.19.0.0/16`，与宿主 mihomo 的 `198.18.0.0/16` 隔离（排查 MagicDNS 旁路投毒后加固）
-- [ ] Tailscale 管理台设置 Global nameserver + Override DNS servers（必需，见 README；阻断 MagicDNS peer-API 旁路）
+- [x] FakeIP 网段改为 `198.19.0.0/16`，与宿主 mihomo 的 `198.18.0.0/16` 隔离；隔离后 MagicDNS peer-API 路径（mihomo 应答自身 FakeIP）与网关劫持路径均可正常工作
+- [x] iPhone 实机浏览验证通过（经 mihomo FakeIP 路径，Clash 域名规则生效）
+- [ ] 可选加固：Tailscale 管理台 Global nameserver + Override DNS servers（把客户端 DNS 全部收敛到网关劫持，见 README）
 - [ ] iPhone 实机 DNS 泄漏测试与 QUIC 行为验证
 
 ## Phase 3 — 可靠性与安全
