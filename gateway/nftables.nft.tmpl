@@ -23,8 +23,10 @@ table inet clashgw {
         }
     }
 
-    # NOTE: 198.18.0.0/15 and fc00::/18 are intentionally NOT excluded:
+    # NOTE: 198.19.0.0/16 and fc00::/18 are intentionally NOT excluded:
     # they are the sing-box FakeIP ranges and must reach the TPROXY listener.
+    # (198.19.0.0/16 is deliberately disjoint from mihomo's own FakeIP range
+    # 198.18.0.0/16 so stale answers from either side are distinguishable.)
     # Only fd00::/8 (real ULA, incl. the Tailscale fd7a:115c:a1e0::/48) is out.
     set reserved6 {
         type ipv6_addr

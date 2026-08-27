@@ -61,7 +61,19 @@ Then in the [Tailscale admin console](https://login.tailscale.com/admin/machines
 
 1. The node `clash-gw` appears — approve **Use as exit node** (and disable
    key expiry for unattended operation).
-2. Optionally restrict who may use it, e.g. in the ACL policy:
+2. **DNS settings → Global nameservers**: add a plain-DNS resolver (e.g.
+   `114.114.114.114`) and enable **Override DNS servers**. This is required:
+   without it, clients on the exit node send DNS to the gateway's tailscaled
+   over the Tailscale peer API, which resolves through the host Mac — where
+   Clash's own FakeIP DNS answers poison the path (the relay then logs
+   `missing fakeip record` and the phone reports `dns-forward-failing`).
+   With a global resolver set, clients send ordinary port-53 queries through
+   the tunnel and the gateway answers them itself — the resolver IP is never
+   actually consulted while on the exit node, so pick one that also works
+   for your devices when they are off the exit node. Prefer resolvers
+   outside Tailscale's known-DoH list (e.g. not 1.1.1.1/8.8.8.8), which
+   would otherwise be silently upgraded to DoH and bypass FakeIP.
+3. Optionally restrict who may use it, e.g. in the ACL policy:
 
    ```jsonc
    "autoApprovers": {"exitNode": ["your-login@example.com"]},
@@ -118,7 +130,9 @@ either way.
   connects to a fake IP, sing-box hands Clash the original **domain**, so
   Clash domain rules and remote resolution work exactly as if the request
   had been made locally. Real upstream lookups go over TCP through Clash —
-  no resolver on the gateway's ISP is ever consulted.
+  no resolver on the gateway's ISP is ever consulted. The FakeIP range is
+  `198.19.0.0/16`, deliberately disjoint from mihomo's `198.18.0.0/16`, so
+  answers from the two FakeIP engines can never be confused.
 - **UDP**: Clash answers SOCKS5 UDP ASSOCIATE with `BND.ADDR=127.0.0.1`
   (mixed-port on loopback, `allow-lan: false`), which is unreachable from
   another network namespace. The relay therefore runs a socat TCP+UDP
@@ -158,6 +172,7 @@ either way.
 | Domains hit wrong Clash rules | Client cached real IPs from before enabling the exit node — toggle Wi-Fi/airplane mode to flush DNS |
 | Relay logs `tailscale0 disappeared` | Normal after tailscale container restart; it rejoins automatically |
 | Node warns `could not connect to relay server`, phone says it can't reach DNS servers | Docker Desktop injects the macOS system proxy (set by Clash) into containers, sending tailscaled's DERP/control traffic through the proxy exit. The compose file pins `HTTP(S)_PROXY` empty for the tailscale service — make sure that block is present |
+| Relay logs `missing fakeip record`, phone shows `dns-forward-failing` | Client DNS is arriving via the MagicDNS peer-API side path and being answered by Clash's FakeIP engine on the host instead of the gateway. Set the tailnet **global nameserver + Override DNS servers** (see First deployment); stale fake answers expire within seconds |
 
 ## Rollback
 

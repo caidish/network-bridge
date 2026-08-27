@@ -21,6 +21,8 @@ Implementation tracker for
 - [x] UDP TPROXY、DNS 劫持（含 MagicDNS 100.100.100.100）、FakeIP、`*.ts.net` 分流
 - [x] DNS 无泄漏路径：上游解析走 TCP 经 Clash，不依赖 UDP，也不触碰本地 ISP DNS
 - [x] UDP 降级开关 `BLOCK_QUIC`（默认关闭；实测无需启用）
+- [x] FakeIP 网段改为 `198.19.0.0/16`，与宿主 mihomo 的 `198.18.0.0/16` 隔离（排查 MagicDNS 旁路投毒后加固）
+- [ ] Tailscale 管理台设置 Global nameserver + Override DNS servers（必需，见 README；阻断 MagicDNS peer-API 旁路）
 - [ ] iPhone 实机 DNS 泄漏测试与 QUIC 行为验证
 
 ## Phase 3 — 可靠性与安全
