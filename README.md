@@ -214,3 +214,7 @@ cloning this repo.
 
 Nothing on the host Mac (Tailscale client, Clash Verge, its subscriptions)
 is modified by deploying or rolling back this gateway.
+
+## License
+
+[MIT](LICENSE).
