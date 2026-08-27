@@ -34,10 +34,14 @@ sections below cover the same steps manually, plus operations details.
 
 ## Prerequisites
 
-- Docker Desktop (Apple Silicon), running and set to start at login.
-- Clash Verge running on the host with mixed-port `7897` (default;
-  `allow-lan` can stay `false`).
-- A Tailscale account with admin access to approve exit nodes.
+- A Docker host, running and set to start at login (the reference
+  deployment is Docker Desktop on an Apple Silicon Mac; see
+  [Portability](#portability) for plain Linux engines).
+- A local proxy with a SOCKS5 port supporting UDP ASSOCIATE — Clash Verge
+  with mixed-port `7897` by default (`allow-lan` can stay `false` on
+  Docker Desktop).
+- A Tailscale account with admin access to approve exit nodes (or a
+  self-hosted Headscale — set `TS_LOGIN_SERVER` in `.env`).
 
 ## Configure
 
@@ -162,6 +166,31 @@ either way.
   `gateway/Dockerfile`, then `docker compose up -d --build`.
 - Prevent the Mac from sleeping (System Settings → Energy) or the exit
   node goes offline.
+
+## Portability
+
+Everything device-specific is meant to live in `.env` (`.env.example`
+documents each knob: proxy host/port, node name, TPROXY port, QUIC
+fallback, Headscale URLs). Notes for setups other than the reference one:
+
+- **Plain Linux Docker engine**: `host.docker.internal` is mapped to
+  `host-gateway` by the compose file, but Linux does not forward container
+  traffic to host **loopback** the way Docker Desktop does — the proxy
+  must listen beyond `127.0.0.1` (Clash `allow-lan: true`), with the host
+  firewall restricting the port to the Docker subnet.
+- **Other proxies**: any local SOCKS5 endpoint with UDP ASSOCIATE works as
+  the upstream; only `CLASH_SOCKS_HOST/PORT` change. If the host proxy
+  runs its own FakeIP TUN, its range must stay disjoint from the gateway's
+  `198.19.0.0/16` (mihomo's default `198.18.0.0/16` already is).
+- **Headscale**: set `TS_LOGIN_SERVER` (and optionally `TS_ADMIN_URL`) in
+  `.env`; `setup.sh` passes them through.
+- **Node name**: `GW_NODE_NAME` in `.env` (default `clash-gw`).
+
+For Claude Code users, `.claude/skills/gateway-setup/SKILL.md` packages
+the whole procedure — environment detection, configuration, verification,
+and a symptom→cause→fix map of every failure mode debugged on the
+reference deployment — as a `/gateway-setup` skill available after
+cloning this repo.
 
 ## Troubleshooting
 

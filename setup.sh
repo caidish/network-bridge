@@ -7,8 +7,9 @@ cd "$(dirname "$0")"
 
 [ -f .env ] && . ./.env
 CLASH_SOCKS_PORT="${CLASH_SOCKS_PORT:-7897}"
-NODE_NAME="clash-gw"
-ADMIN_URL="https://login.tailscale.com/admin/machines"
+NODE_NAME="${GW_NODE_NAME:-clash-gw}"
+# TS_LOGIN_SERVER (optional, e.g. a Headscale URL) switches the control plane.
+ADMIN_URL="${TS_ADMIN_URL:-https://login.tailscale.com/admin/machines}"
 LOGIN_DONE=0
 
 step() { printf '\n[%s/6] %s\n' "$1" "$2"; }
@@ -56,6 +57,7 @@ else
     printf '  One-time login: open the URL printed below, authenticate, then wait here.\n'
     # SETUP_LOGIN_TIMEOUT (e.g. "10s") is for non-interactive testing only.
     if ts up --hostname="$NODE_NAME" --advertise-exit-node --accept-dns=false \
+            ${TS_LOGIN_SERVER:+--login-server=$TS_LOGIN_SERVER} \
             ${SETUP_LOGIN_TIMEOUT:+--timeout=$SETUP_LOGIN_TIMEOUT}; then
         ok "Logged in — state persists across restarts"
         LOGIN_DONE=1

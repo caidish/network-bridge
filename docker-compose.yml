@@ -10,7 +10,12 @@ services:
   tailscale:
     image: tailscale/tailscale:v1.102.3
     container_name: clash-gw-tailscale
-    hostname: clash-gw
+    hostname: ${GW_NODE_NAME:-clash-gw}
+    # On Docker Desktop host.docker.internal exists natively (and forwards to
+    # host loopback); this mapping makes the same name work on a plain Linux
+    # engine, where the proxy must then listen beyond 127.0.0.1 (see README).
+    extra_hosts:
+      - host.docker.internal:host-gateway
     # containerboot's no-authkey `tailscale up` has a 60 s deadline: the
     # container restart-loops until login, rotating the auth URL and tearing
     # down the netns shared with the relay. Running tailscaled directly keeps

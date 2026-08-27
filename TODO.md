@@ -42,6 +42,13 @@ Implementation tracker for
 - [ ] 24 小时资源与稳定性观察（`docker stats`，AC-6）
 - [ ] 按实测结果回调内存/CPU 上限与 UDP 策略
 
+## 通用化与分享
+
+- [x] 设备相关配置全部收敛到 `.env`（代理地址/端口、节点名 `GW_NODE_NAME`、TPROXY 端口、`BLOCK_QUIC`、Headscale `TS_LOGIN_SERVER`）
+- [x] Linux 原生 Docker 兼容：compose 映射 `host.docker.internal:host-gateway`（README Portability 说明 allow-lan 要求）
+- [x] `.claude/skills/gateway-setup/SKILL.md`：环境探测 → 配置 → 部署 → 验证流程与全部已知故障模式（症状→根因→修复）
+- [ ] 在另一台机器（或 Linux 主机）实测通用化部署流程
+
 ## 首次上线待办（用户操作）
 
 1. `./setup.sh` → 按提示打开 URL 完成一次性登录（脚本随后自动验证健康与数据路径）
