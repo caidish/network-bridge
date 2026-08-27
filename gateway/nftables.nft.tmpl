@@ -1,0 +1,63 @@
+# Transparent gateway TPROXY rules. Rendered by entrypoint.sh
+# (__TPROXY_PORT__ is substituted), applied into the network namespace
+# shared with the tailscale container.
+
+# Declare-then-delete makes re-applying idempotent even on first run.
+table inet clashgw
+delete table inet clashgw
+
+table inet clashgw {
+    set reserved4 {
+        type ipv4_addr
+        flags interval
+        elements = {
+            0.0.0.0/8,
+            10.0.0.0/8,
+            100.64.0.0/10,
+            127.0.0.0/8,
+            169.254.0.0/16,
+            172.16.0.0/12,
+            192.168.0.0/16,
+            224.0.0.0/4,
+            240.0.0.0/4
+        }
+    }
+
+    # NOTE: 198.18.0.0/15 and fc00::/18 are intentionally NOT excluded:
+    # they are the sing-box FakeIP ranges and must reach the TPROXY listener.
+    # Only fd00::/8 (real ULA, incl. the Tailscale fd7a:115c:a1e0::/48) is out.
+    set reserved6 {
+        type ipv6_addr
+        flags interval
+        elements = {
+            ::/127,
+            fe80::/10,
+            fd00::/8,
+            ff00::/8
+        }
+    }
+
+    chain prerouting {
+        type filter hook prerouting priority mangle; policy accept;
+
+        iifname != "tailscale0" return
+
+        # All client DNS — including MagicDNS 100.100.100.100 — is hijacked
+        # into sing-box, which answers FakeIP / forwards ts.net to MagicDNS.
+        meta l4proto { tcp, udp } th dport 53 tproxy to :__TPROXY_PORT__ meta mark set 0x1 counter accept
+
+        ip daddr @reserved4 counter return
+        ip6 daddr @reserved6 counter return
+
+        meta l4proto { tcp, udp } tproxy to :__TPROXY_PORT__ meta mark set 0x1 counter accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy accept;
+
+        # Fail-closed: exit-node traffic is only ever delivered locally via
+        # TPROXY. If sing-box or Clash is down, nothing may be forwarded and
+        # NATed out directly (a drop here beats any accept in other tables).
+        iifname "tailscale0" counter drop
+    }
+}

@@ -1,0 +1,92 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "fakeip",
+        "tag": "dns-fakeip",
+        "inet4_range": "198.18.0.0/15",
+        "inet6_range": "fc00::/18"
+      },
+      {
+        "type": "tcp",
+        "tag": "dns-remote",
+        "server": "1.1.1.1",
+        "server_port": 53,
+        "detour": "clash-upstream"
+      },
+      {
+        "type": "udp",
+        "tag": "dns-magicdns",
+        "server": "100.100.100.100",
+        "server_port": 53
+      },
+      {
+        "type": "local",
+        "tag": "dns-local"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": ["ts.net"],
+        "server": "dns-magicdns"
+      },
+      {
+        "query_type": ["A", "AAAA"],
+        "server": "dns-fakeip"
+      }
+    ],
+    "final": "dns-remote",
+    "strategy": "prefer_ipv4",
+    "independent_cache": true
+  },
+  "inbounds": [
+    {
+      "type": "tproxy",
+      "tag": "tproxy-in",
+      "listen": "::",
+      "listen_port": __TPROXY_PORT__
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "socks",
+      "tag": "clash-upstream",
+      "server": "__CLASH_HOST__",
+      "server_port": __CLASH_PORT__,
+      "version": "5"
+    },
+    {
+      "type": "direct",
+      "tag": "direct-out"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "inbound": ["tproxy-in"],
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_cidr": ["100.64.0.0/10", "fd7a:115c:a1e0::/48"],
+        "outbound": "direct-out"
+      }
+    ],
+    "final": "clash-upstream",
+    "default_domain_resolver": "dns-local"
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "path": "/var/lib/sing-box/cache.db",
+      "store_fakeip": true
+    }
+  }
+}

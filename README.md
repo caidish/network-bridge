@@ -1,0 +1,158 @@
+# network-bridge: Tailscale → Clash transparent exit-node gateway
+
+A resident Docker service for an Apple Silicon Mac that adds a `clash-gw`
+exit node to your Tailnet. A remote device (iPhone, laptop) only enables
+Tailscale and selects `clash-gw`; all of its TCP, UDP, and DNS traffic then
+flows through the Clash Verge instance already running on the Mac — its
+rules, subscriptions, and selected proxy node keep working unchanged.
+
+Design rationale, requirements, and acceptance criteria live in
+[tailscale-clash-docker-gateway-prd.md](tailscale-clash-docker-gateway-prd.md).
+
+```
+iPhone ──tailscale──▶ [tailscale container: kernel TUN]
+                          │ nftables TPROXY (tcp+udp+dns)
+                          ▼
+                      [relay container: sing-box]
+                          │ SOCKS5 via 127.0.0.1 alias (socat)
+                          ▼
+                      host.docker.internal:7897  (Clash Verge mixed-port)
+                          ▼
+                      Clash rules / selected node ──▶ Internet
+```
+
+## Prerequisites
+
+- Docker Desktop (Apple Silicon), running and set to start at login.
+- Clash Verge running on the host with mixed-port `7897` (default;
+  `allow-lan` can stay `false`).
+- A Tailscale account with admin access to approve exit nodes.
+
+## Configure
+
+Defaults work for the standard setup. To override, copy `.env.example` to
+`.env` and edit (`CLASH_SOCKS_HOST/PORT`, `TPROXY_PORT`, `BLOCK_QUIC`).
+No secrets are stored in this repo, the compose file, or the image.
+
+## First deployment
+
+```sh
+docker compose up -d --build
+
+# One-time interactive Tailscale login (no auth key is stored anywhere):
+docker compose exec tailscale tailscale up \
+    --hostname=clash-gw --advertise-exit-node --accept-dns=false
+# open the printed https://login.tailscale.com/a/... URL and log in;
+# the command returns once the login completes
+```
+
+Then in the [Tailscale admin console](https://login.tailscale.com/admin/machines):
+
+1. The node `clash-gw` appears — approve **Use as exit node** (and disable
+   key expiry for unattended operation).
+2. Optionally restrict who may use it, e.g. in the ACL policy:
+
+   ```jsonc
+   "autoApprovers": {"exitNode": ["your-login@example.com"]},
+   "acls": [
+     {"action": "accept", "src": ["your-login@example.com"],
+      "dst": ["autogroup:internet:*"]}
+   ]
+   ```
+
+On the iPhone: Tailscale app → Exit Node → select `clash-gw`. Nothing else
+(no Clash app, no proxy settings, no subscription import) is needed.
+
+Login state persists in the `tailscale-state` volume, so restarts of
+Docker/the Mac never ask for login again.
+
+## Verify
+
+```sh
+sh scripts/diagnose.sh
+```
+
+This prints container health, tailscale status, nftables counters (which
+show whether traffic is actually entering TPROXY), the sing-box listener,
+and the exit IP fetched through Clash from both the host and the container
+(the two must match — that IP is also what the iPhone should see on an IP
+echo site while using the exit node).
+
+SOCKS5 UDP ASSOCIATE (QUIC and other UDP through Clash):
+
+```sh
+docker compose --profile test run --rm udp-probe        # from inside Docker
+python scripts/socks5_udp_probe.py --port 7897          # from the host
+```
+
+Both were verified working in this environment. If the probe fails in your
+environment, set `BLOCK_QUIC=true` in `.env` and `docker compose up -d`:
+UDP/443 is then rejected so HTTP/3 clients fall back to TCP immediately.
+DNS never depends on UDP upstream (see below), so it stays leak-free
+either way.
+
+## How it works
+
+- **tailscale container** runs kernel-TUN tailscaled (`/dev/net/tun`,
+  `NET_ADMIN`/`NET_RAW`, no `--privileged`) and advertises itself as an
+  exit node named `clash-gw`.
+- **relay container** shares the tailscale container's network namespace.
+  nftables marks TCP/UDP arriving on `tailscale0` and TPROXYes it into
+  sing-box (`:7893`); policy routing (`fwmark 0x1 → table 100`) delivers
+  it locally.
+- **DNS**: all client port-53 traffic — including MagicDNS
+  `100.100.100.100` — is hijacked into sing-box. `*.ts.net` names are
+  forwarded to MagicDNS directly; everything else is answered from a
+  **FakeIP** range (`198.18.0.0/15`, `fc00::/18`). When the client then
+  connects to a fake IP, sing-box hands Clash the original **domain**, so
+  Clash domain rules and remote resolution work exactly as if the request
+  had been made locally. Real upstream lookups go over TCP through Clash —
+  no resolver on the gateway's ISP is ever consulted.
+- **UDP**: Clash answers SOCKS5 UDP ASSOCIATE with `BND.ADDR=127.0.0.1`
+  (mixed-port on loopback, `allow-lan: false`), which is unreachable from
+  another network namespace. The relay therefore runs a socat TCP+UDP
+  alias of the mixed-port on its own `127.0.0.1:7897`, making that reply
+  address valid inside the container. This keeps `allow-lan` off.
+- **Fail-closed**: an nftables `forward` rule drops everything arriving
+  from `tailscale0` that was not delivered via TPROXY. If sing-box or
+  Clash dies, client traffic fails — it is never silently NATed out the
+  Mac's own connection. (Side effect: ICMP ping through the exit node does
+  not work; SOCKS5 cannot carry it anyway.)
+- **Recovery**: `restart: unless-stopped` everywhere; a watchdog restarts
+  the relay if sing-box/socat dies or the tailscale container was
+  recreated (verified: rules and listeners re-apply automatically).
+  Healthchecks probe the full chain including an HTTP fetch through the
+  Clash mixed-port every 30 s (visible as a small periodic entry in Clash
+  Connections).
+
+## Operations
+
+- Logs: `docker compose logs -f relay` / `... tailscale`
+  (json-file, 10 MiB × 3 rotation).
+- Resources: `docker stats` — each container is capped at 0.5 CPU /
+  256 MiB (adjust in `docker-compose.yml` after performance testing).
+- Update images: bump the pinned tags in `docker-compose.yml` /
+  `gateway/Dockerfile`, then `docker compose up -d --build`.
+- Prevent the Mac from sleeping (System Settings → Energy) or the exit
+  node goes offline.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Node missing from Tailnet | `docker compose logs tailscale` — login URL not visited yet, or key expired |
+| iPhone selects node but no traffic | nft counters in `scripts/diagnose.sh` all zero → Tailscale admin hasn't approved exit node |
+| TCP works, some apps hang | QUIC/UDP path: run the UDP probes; consider `BLOCK_QUIC=true` |
+| Everything fails, relay unhealthy | Clash Verge not running / mixed-port changed — fix and the gateway recovers on its own |
+| Domains hit wrong Clash rules | Client cached real IPs from before enabling the exit node — toggle Wi-Fi/airplane mode to flush DNS |
+| Relay logs `tailscale0 disappeared` | Normal after tailscale container restart; it rejoins automatically |
+
+## Rollback
+
+1. Deselect the exit node on the iPhone.
+2. `docker compose down` (add `-v` only when you also want to drop the
+   Tailscale login state).
+3. Disable or remove `clash-gw` in the Tailscale admin console.
+
+Nothing on the host Mac (Tailscale client, Clash Verge, its subscriptions)
+is modified by deploying or rolling back this gateway.

@@ -1,0 +1,91 @@
+name: clash-gw
+
+x-logging: &logrotate
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  tailscale:
+    image: tailscale/tailscale:v1.102.3
+    container_name: clash-gw-tailscale
+    hostname: clash-gw
+    # containerboot's no-authkey `tailscale up` has a 60 s deadline: the
+    # container restart-loops until login, rotating the auth URL and tearing
+    # down the netns shared with the relay. Running tailscaled directly keeps
+    # everything stable; login is a one-time `docker compose exec` (README).
+    entrypoint:
+      - tailscaled
+      - --state=/var/lib/tailscale/tailscaled.state
+      - --statedir=/var/lib/tailscale
+      - --tun=tailscale0
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.forwarding: 1
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 256m
+    logging: *logrotate
+    healthcheck:
+      test: ["CMD", "tailscale", "status", "--peers=false"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  relay:
+    build: ./gateway
+    image: clash-gw-relay:local
+    container_name: clash-gw-relay
+    # Shares the tailscale container's network namespace so nftables TPROXY
+    # rules and the sing-box listener sit directly behind tailscale0.
+    network_mode: service:tailscale
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    depends_on:
+      - tailscale
+    environment:
+      CLASH_SOCKS_HOST: ${CLASH_SOCKS_HOST:-host.docker.internal}
+      CLASH_SOCKS_PORT: ${CLASH_SOCKS_PORT:-7897}
+      TPROXY_PORT: ${TPROXY_PORT:-7893}
+      BLOCK_QUIC: ${BLOCK_QUIC:-false}
+    volumes:
+      - singbox-cache:/var/lib/sing-box
+    restart: unless-stopped
+    stop_grace_period: 15s
+    cpus: 0.5
+    mem_limit: 256m
+    logging: *logrotate
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # One-shot probe for FR-3 / AC-4: verifies SOCKS5 UDP ASSOCIATE against the
+  # Clash mixed-port from inside Docker. Run with:
+  #   docker compose --profile test run --rm udp-probe
+  udp-probe:
+    profiles: ["test"]
+    image: python:3.12-alpine
+    volumes:
+      - ./scripts:/scripts:ro
+    environment:
+      CLASH_SOCKS_HOST: ${CLASH_SOCKS_HOST:-host.docker.internal}
+      CLASH_SOCKS_PORT: ${CLASH_SOCKS_PORT:-7897}
+    entrypoint: ["sh", "-c", "python /scripts/socks5_udp_probe.py --host \"$$CLASH_SOCKS_HOST\" --port \"$$CLASH_SOCKS_PORT\""]
+    logging: *logrotate
+
+volumes:
+  tailscale-state:
+  singbox-cache:
